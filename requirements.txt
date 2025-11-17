@@ -1,0 +1,18 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pydantic[email]
+jinja2
+aiofiles
+python-multipart
+alembic
+passlib[bcrypt]
+python-dotenv
+
+# For PDF receipts
+pdfkit
+# wkhtmltopdf-binary
+
+# Optional but useful
+httpx

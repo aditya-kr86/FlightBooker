@@ -1,0 +1,6 @@
+architecture.txt
+.venv
+try.py
+receipt.pdf
+app/models/__pycache__
+app/__pycache__
