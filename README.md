@@ -188,7 +188,7 @@ app/services/pricing_engine.py
 
 ---
 
-## 🏁 **Milestone Progress**
+## **Milestone Progress**
 
 | Milestone              | Status         |
 | ---------------------- | -------------- |
@@ -199,13 +199,13 @@ app/services/pricing_engine.py
 
 ---
 
-## 🪪 **License**
+## **License**
 
 MIT License — free for academic, learning & experimentation.
 
 ---
 
-## 🎤 **Credits**
+## **Credits**
 
 Developed by **Aditya Kumar**
 Infosys Springboard Internship — 2025

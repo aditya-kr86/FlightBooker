@@ -1,7 +1,7 @@
 from .config import Base, engine
-from .models.airport import Airport
-from .models.airline import Airline
-from .models.flight import Flight
+
+# Import all model modules so SQLAlchemy registers them before create_all()
+from .models import user, airline, airport, aircraft, flight, seat, booking, ticket, payment
 
 def create_all_tables():
     Base.metadata.create_all(bind=engine)

@@ -1,6 +1,7 @@
 fastapi
 uvicorn[standard]
 sqlalchemy
+pymysql
 pydantic
 pydantic[email]
 jinja2
