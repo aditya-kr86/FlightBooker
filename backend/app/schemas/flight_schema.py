@@ -37,6 +37,9 @@ class FlightResponse(BaseModel):
     departure_time: datetime
     arrival_time: datetime
     base_price: float
+    current_price: float
+    # Optional per-tier price map, present when `tier=all` requested
+    price_map: dict[str, float] | None = None
     seats_left: int
 
     class Config:

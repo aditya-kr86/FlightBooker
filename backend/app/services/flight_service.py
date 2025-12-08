@@ -15,9 +15,35 @@ from app.models.payment import Payment
 from app.models.user import User
 from app.models.aircraft import Aircraft
 from app.models.aircraft_seat_template import AircraftSeatTemplate
+from app.services.pricing_engine import compute_dynamic_price
 
 
-def search_flights(db: Session, origin: str | None = None, destination: str | None = None, date: str | None = None, sort_by: str | None = None, limit: int | None = None, days_flex: int = 0):
+_cache: dict = {}
+_CACHE_TTL_SECONDS = 60
+
+
+def _make_cache_key(origin, destination, date, sort_by, days_flex, page, page_size):
+    return f"{origin}|{destination}|{date}|{sort_by}|{days_flex}|{page}|{page_size}"
+
+
+def _get_cached(key: str):
+    entry = _cache.get(key)
+    if not entry:
+        return None
+    ts, value = entry
+    import time
+    if time.time() - ts > _CACHE_TTL_SECONDS:
+        del _cache[key]
+        return None
+    return value
+
+
+def _set_cached(key: str, value):
+    import time
+    _cache[key] = (time.time(), value)
+
+
+def search_flights(db: Session, origin: str | None = None, destination: str | None = None, date: str | None = None, sort_by: str | None = None, limit: int | None = None, days_flex: int = 0, tier: str = "ECONOMY", store_history: bool = True, page: int | None = None, page_size: int | None = None):
     """Search flights with optional filters. Returns list of dicts matching `FlightResponse` schema.
 
     origin/destination: airport codes (e.g., 'DEL')
@@ -57,7 +83,11 @@ def search_flights(db: Session, origin: str | None = None, destination: str | No
         # in a portable way; use julianday difference to compute duration
         query = query.order_by((func.julianday(Flight.arrival_time) - func.julianday(Flight.departure_time)).asc())
 
-    if limit:
+    # Pagination: support page/page_size OR limit
+    if page and page_size:
+        offset = max(0, (page - 1) * page_size)
+        query = query.offset(offset).limit(page_size)
+    elif limit:
         query = query.limit(limit)
 
     flights = query.all()
@@ -72,6 +102,53 @@ def search_flights(db: Session, origin: str | None = None, destination: str | No
         # compute seats left by counting available seats
         seats_left = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id, Seat.is_available == True).scalar() or 0
 
+        total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id).scalar() or 0
+        booked_seats = max(total_seats - seats_left, 0)
+
+        # determine demand level (fallback to medium)
+        demand_level = getattr(flight, 'demand_level', 'medium') or 'medium'
+
+        # compute dynamic price for requested tier or all tiers
+        try:
+            if tier and tier.lower() == "all":
+                # compute for multiple tiers
+                tiers = ["ECONOMY", "ECONOMY_FLEX", "BUSINESS", "FIRST"]
+                price_map = {}
+                for t in tiers:
+                    price_map[t] = compute_dynamic_price(
+                        base_fare=flight.base_price,
+                        departure_time=flight.departure_time,
+                        total_seats=total_seats,
+                        booked_seats=booked_seats,
+                        demand_level=demand_level,
+                        tier=t,
+                    )
+                current_price = price_map.get("ECONOMY", float(flight.base_price or 0.0))
+            else:
+                current_price = compute_dynamic_price(
+                    base_fare=flight.base_price,
+                    departure_time=flight.departure_time,
+                    total_seats=total_seats,
+                    booked_seats=booked_seats,
+                    demand_level=demand_level,
+                    tier=(tier or "ECONOMY"),
+                )
+                price_map = None
+        except Exception:
+            current_price = float(flight.base_price or 0.0)
+            price_map = None
+
+        # persist fare history if requested
+        if store_history:
+            try:
+                from app.models.fare_history import FareHistory
+                from datetime import datetime as _dt
+                fh = FareHistory(flight_id=flight.id, tier=(tier or "ECONOMY") if not (tier and tier.lower()=="all") else "MULTI", price=current_price, remaining_seats=seats_left, demand_level=demand_level, timestamp=_dt.utcnow())
+                db.add(fh)
+                db.commit()
+            except Exception:
+                db.rollback()
+
         formatted.append({
             "id": flight.id,
             "airline": airline.name if airline else None,
@@ -82,8 +159,16 @@ def search_flights(db: Session, origin: str | None = None, destination: str | No
             "departure_time": flight.departure_time,
             "arrival_time": flight.arrival_time,
             "base_price": flight.base_price,
+            "current_price": current_price,
+            "price_map": price_map,
             "seats_left": seats_left,
         })
+
+    # If tier == all and page/page_size provided, cache the result for short TTL
+    # produce cache key
+    if tier and tier.lower() == "all":
+        key = _make_cache_key(origin, destination, date, sort_by, days_flex or 0, page or 0, page_size or (limit or 0))
+        _set_cached(key, formatted)
 
     return formatted
 
@@ -167,22 +252,46 @@ def create_flight(db: Session, airline_id: int, aircraft_id: int, flight_number:
     return flight
 
 
-def create_booking(db: Session, user_id: int, flight_id: int, passengers: list[dict], seat_class: str | None = None) -> Booking:
-    """Create booking for multiple passengers.
-
-    `passengers` is a list of dicts containing passenger_name, age, gender.
-    `seat_ids` (optional) is a list of requested seat ids aligned with passengers.
-    `seat_class` (optional) requests seats only within this class when auto-allocating.
+def create_booking(db: Session, user_id: int, flight_id: int, departure_date: str, passengers: list[dict], seat_class: str | None = None) -> dict:
+    """Create booking with dynamic price computation.
+    
+    Returns dict with 'booking' and 'total_fare' keys.
     """
     flight = db.query(Flight).filter(Flight.id == flight_id).first()
     if not flight:
         raise ValueError("flight not found")
 
-    # Seats are not allocated at booking time — allocation happens after successful payment.
-    # create booking
-    # Create a provisional booking reference to be used for payment.
+    # Validate departure_date matches flight
+    try:
+        from datetime import datetime as dt
+        dep_date_obj = dt.strptime(departure_date, "%Y-%m-%d").date()
+        flight_date = flight.departure_time.date()
+        if dep_date_obj != flight_date:
+            raise ValueError(f"departure_date {departure_date} does not match flight departure {flight_date}")
+    except ValueError as e:
+        raise ValueError(f"Invalid departure_date or mismatch: {e}")
+
+    # Compute dynamic price for this flight and seat_class
+    total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id).scalar() or 0
+    available = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id, Seat.is_available == True).scalar() or 0
+    booked_seats = total_seats - available
+    demand_level = getattr(flight, 'demand_level', 'medium') or 'medium'
+    tier = (seat_class or "Economy").upper()
+
+    dynamic_price = compute_dynamic_price(
+        base_fare=flight.base_price,
+        departure_time=flight.departure_time,
+        total_seats=total_seats,
+        booked_seats=booked_seats,
+        demand_level=demand_level,
+        tier=tier,
+    )
+
+    # Total fare for all passengers
+    total_fare = dynamic_price * len(passengers)
+
+    # Create booking
     booking_ref = "BKG" + uuid.uuid4().hex[:12].upper()
-    # PNR will be generated after successful payment
     booking = Booking(user_id=user_id, pnr=None, booking_reference=booking_ref, status="Payment Pending")
     db.add(booking)
     db.flush()
@@ -191,34 +300,29 @@ def create_booking(db: Session, user_id: int, flight_id: int, passengers: list[d
     dep = db.query(Airport).filter(Airport.id == flight.departure_airport_id).first()
     arr = db.query(Airport).filter(Airport.id == flight.arrival_airport_id).first()
 
-    # create tickets for each passenger
+    # Create tickets for each passenger with computed dynamic price
     for idx, p in enumerate(passengers):
-        # tickets created without seat assignment; seats will be allocated after successful payment
         ticket = Ticket(
-        booking_id=booking.id,
-        flight_id=flight.id,
-        seat_id=None,
-        passenger_name=p.get("passenger_name"),
-        passenger_age=p.get("age"),
-        passenger_gender=p.get("gender"),
-        airline_name=airline.name if airline else "",
-        flight_number=flight.flight_number,
-        route=f"{dep.code if dep else ''}-{arr.code if arr else ''}",
-        departure_airport=dep.code if dep else "",
-        arrival_airport=arr.code if arr else "",
-        departure_city=dep.city if dep and hasattr(dep, 'city') else "",
-        arrival_city=arr.city if arr and hasattr(arr, 'city') else "",
-        departure_time=flight.departure_time,
-        arrival_time=flight.arrival_time,
-        # DB schema may still enforce NOT NULL for seat_number until migrations run.
-        # Use an empty string placeholder for provisional tickets.
-        seat_number="",
-        seat_class=seat_class if seat_class else "Economy",
-        # allow per-passenger fare override if provided in payload
-        price_paid=p.get("fare") if p.get("fare") is not None else flight.base_price,
-        currency=p.get("currency") if p.get("currency") else "INR",
-        # ticket_number will be generated only after payment
-        ticket_number=None
+            booking_id=booking.id,
+            flight_id=flight.id,
+            seat_id=None,
+            passenger_name=p.get("passenger_name"),
+            passenger_age=p.get("age"),
+            passenger_gender=p.get("gender"),
+            airline_name=airline.name if airline else "",
+            flight_number=flight.flight_number,
+            route=f"{dep.code if dep else ''}-{arr.code if arr else ''}",
+            departure_airport=dep.code if dep else "",
+            arrival_airport=arr.code if arr else "",
+            departure_city=dep.city if dep and hasattr(dep, 'city') else "",
+            arrival_city=arr.city if arr and hasattr(arr, 'city') else "",
+            departure_time=flight.departure_time,
+            arrival_time=flight.arrival_time,
+            seat_number="",
+            seat_class=tier,
+            payment_required=dynamic_price,  # Use computed dynamic price
+            currency="INR",
+            ticket_number=None
         )
         db.add(ticket)
 
@@ -229,7 +333,7 @@ def create_booking(db: Session, user_id: int, flight_id: int, passengers: list[d
         raise
 
     db.refresh(booking)
-    return booking
+    return {"booking": booking, "total_fare": total_fare}
 
 
 def get_booking_by_pnr(db: Session, pnr: str) -> Booking | None:
@@ -263,7 +367,7 @@ def create_payment(db: Session, booking_reference: str, amount: float, method: s
     # compute required amount from booking tickets
     required = 0.0
     for t in booking.tickets:
-        required += float(t.price_paid or 0)
+        required += float(t.payment_required or 0)
 
     tx = Payment(booking_id=booking.id, amount=amount, method=method, transaction_id=str(uuid.uuid4()))
 

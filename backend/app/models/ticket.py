@@ -34,7 +34,8 @@ class Ticket(Base):
     seat_number = Column(String(5), nullable=True)
     seat_class = Column(String(20), nullable=False)
 
-    price_paid = Column(Float, nullable=False)
+    # Renamed price field for clarity; keep column name for compatibility
+    payment_required = Column("price_paid", Float, nullable=False)
     currency = Column(String(10), default="INR")
 
     # ticket_number and issued_at are set only after successful payment/issuance

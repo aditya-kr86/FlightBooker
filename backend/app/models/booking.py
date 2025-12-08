@@ -20,4 +20,4 @@ class Booking(Base):
 
     user = relationship("User", back_populates="bookings")
     tickets = relationship("Ticket", back_populates="booking")
-    payment = relationship("Payment", back_populates="booking", uselist=False)
+    payments = relationship("Payment", back_populates="booking")

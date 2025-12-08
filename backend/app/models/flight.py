@@ -23,6 +23,9 @@ class Flight(Base):
 
     base_price = Column(Float, nullable=False)
 
+    # Demand level: affects dynamic pricing. Values: low, medium, high, extreme
+    demand_level = Column(String(20), nullable=False, default="medium")
+
     status = Column(Enum("Scheduled", "Delayed", "Cancelled", "Departed", name="flight_status"), default="Scheduled")
 
     airline = relationship("Airline", back_populates="flights")

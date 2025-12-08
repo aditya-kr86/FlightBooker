@@ -17,3 +17,9 @@ pdfkit
 
 # Optional but useful
 httpx
+
+# Scheduler + testing
+apscheduler
+pytest
+celery
+redis

@@ -84,32 +84,44 @@ GaganYatra/
 * Sorting by fare, departure time, duration
 * Real airline/airport dataset simulation
 
-### **2. Dynamic Pricing Engine**
+### **2. Dynamic Pricing Engine** 
 
-Pricing adjusts based on:
+Pricing adjusts in real-time based on:
 
-* Remaining seats %
-* Time to departure
-* Demand index (0–100)
-* Fare tiers (economy → first)
+* **Remaining seats %**: 4 inventory tiers (0.9× to 1.25× multiplier)
+* **Time to departure**: 4 time windows (1.0× to 1.30× multiplier)
+* **Demand level**: Simulated demand states (low/medium/high/extreme)
+* **Fare tiers**: ECONOMY (1.0×), ECONOMY_FLEX (1.2×), BUSINESS (1.8×), FIRST (2.5×)
 
-Live recalculation during search & booking.
+Features:
+- Live recalculation during search & booking
+- Background demand simulator with AsyncIO + Celery support
+- Fare history persistence for audit trails
+- 60-second cache for performance optimization
 
-### **3. Booking Workflow**
+### **3. Booking Workflow** 
 
-* Passenger details
-* Seat locking (optimistic/pessimistic)
-* Payment simulation
-* Auto PNR + ticket generation
-* Booking history & cancellation support
+* Multi-step booking process (booking → payment → confirmation)
+* Passenger details collection with validation
+* Dynamic fare computation (no manual price override)
+* Seat locking with database-level concurrency control (`with_for_update()`)
+* Payment validation (insufficient amount rejection)
+* Auto PNR + ticket generation on successful payment
+* Booking history retrieval & cancellation support
+* Multiple payment attempt handling
+
+**Status**: ~85% complete, undergoing stress testing
 
 ### **4. Frontend UI**
 
-* Search page
-* Real-time pricing results
-* Booking page
-* Confirmation page
+Planned features:
+* Search page with advanced filters
+* Real-time dynamic pricing results display
+* Multi-step booking page
+* Confirmation page with PNR display
 * **PDF / JSON receipt download**
+
+**Status**: Pending (Milestone 4)
 
 ---
 
@@ -142,7 +154,21 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
-### **5. Open Browser**
+### **5. (Optional) Start Celery Worker**
+
+For background demand simulation via Celery (requires Redis):
+
+```bash
+cd backend
+celery -A app.celery_app.celery_app worker --loglevel=info --pool=solo
+```
+
+**Note:** 
+- The `--pool=solo` flag is required for Windows compatibility
+- If Redis is unavailable, the system falls back to AsyncIO background tasks (no restart needed)
+- Run in a separate terminal from Uvicorn
+
+### **6. Open Browser**
 
 * API: `http://127.0.0.1:8000/docs`
 * UI Pages via Jinja2 templates
@@ -165,9 +191,24 @@ Editable inside:
 
 ## **Project Milestones**
 
-| Module                 | Status         |
-| ---------------------- | -------------- |
-| Flight Search Engine   | Completed    |
-| Dynamic Pricing Engine | In Progress |
-| Booking Workflow       | Pending      |
-| Frontend Integration   | Pending      |
+| Milestone | Module                                      | Status         | Completion |
+| --------- | ------------------------------------------- | -------------- | ---------- |
+| **1**     | Core Flight Search & Data Management        |  Completed   | 100%       |
+| **2**     | Dynamic Pricing Engine                      |  Completed   | 100%       |
+| **3**     | Booking Workflow & Transaction Management   | In Progress | ~85%       |
+| **4**     | User Interface & API Integration            | Pending     | 0%         |
+
+### **Milestone 1 & 2 Achievements:**
+- Fully functional flight search with filtering, sorting, and pagination
+- Dynamic pricing engine with multi-factor calculations (inventory, time, demand, tiers)
+- Background demand simulator (AsyncIO + optional Celery worker)
+- Fare history tracking for audit trails
+- Comprehensive test coverage (unit + integration tests)
+
+### **Milestone 3 Progress:**
+- Multi-step booking flow (booking → payment → confirmation)
+- PNR generation and seat allocation
+- Concurrency-safe transactions with database locks
+- Payment validation and multiple attempt handling
+- Booking cancellation and history retrieval endpoints
+- Enhanced stress testing and edge case handling (in progress)

@@ -10,6 +10,7 @@ from app.config import get_db
 from app.schemas.flight_schema import FlightResponse
 from app.services.flight_service import search_flights
 from app.services.flight_service import create_flight
+from app.services.pricing_engine import compute_dynamic_price
 from app.schemas.flight_schema import FlightCreate, FlightResponse
 from fastapi import Body, Path
 from app.models.flight import Flight
@@ -42,6 +43,9 @@ def search_flights_api(
     sort_by: str | None = Query(None, regex="^(price|duration)$"),
     limit: int | None = Query(50, ge=1, le=200),
     days_flex: int | None = Query(0, ge=0, le=30),
+    tier: str | None = Query("ECONOMY", regex="^(ECONOMY|ECONOMY_FLEX|BUSINESS|FIRST|all|ALL)$"),
+    page: int | None = Query(None, ge=1),
+    page_size: int | None = Query(None, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
     # Normalize codes
@@ -57,7 +61,8 @@ def search_flights_api(
         except ValueError:
             raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
 
-    flights = search_flights(db, origin=origin, destination=destination, date=date, sort_by=sort_by, limit=limit, days_flex=days_flex or 0)
+    # If page/page_size provided, pass pagination options
+    flights = search_flights(db, origin=origin, destination=destination, date=date, sort_by=sort_by, limit=limit, days_flex=days_flex or 0, tier=(tier or "ECONOMY"), store_history=True, page=page, page_size=page_size)
 
     # Return empty list when no flights found (consistent with list endpoint)
     return flights or []
@@ -107,6 +112,14 @@ def create_flight_api(payload: FlightCreate, db: Session = Depends(get_db)):
     dep = db.query(Airport).filter(Airport.id == flight.departure_airport_id).first()
     arr = db.query(Airport).filter(Airport.id == flight.arrival_airport_id).first()
     airline = db.query(Airline).filter(Airline.id == flight.airline_id).first()
+    # compute dynamic price (economy)
+    total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id).scalar() or 0
+    booked_seats = max(total_seats - seats_left, 0)
+    demand_level = getattr(flight, 'demand_level', 'medium') or 'medium'
+    try:
+        current_price = compute_dynamic_price(flight.base_price, flight.departure_time, total_seats, booked_seats, demand_level, tier="ECONOMY")
+    except Exception:
+        current_price = float(flight.base_price or 0.0)
 
     return FlightResponse(
         id=flight.id,
@@ -118,6 +131,7 @@ def create_flight_api(payload: FlightCreate, db: Session = Depends(get_db)):
         departure_time=flight.departure_time,
         arrival_time=flight.arrival_time,
         base_price=flight.base_price,
+        current_price=current_price,
         seats_left=seats_left,
     )
 
@@ -133,6 +147,14 @@ def get_flight(flight_id: int = Path(..., ge=1), db: Session = Depends(get_db)):
     airline = db.query(Airline).filter(Airline.id == f.airline_id).first()
     seats_left = db.query(func.count(Seat.id)).filter(Seat.flight_id == f.id, Seat.is_available == True).scalar() or 0
     aircraft = db.query(Aircraft).filter(Aircraft.id == f.aircraft_id).first()
+    total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == f.id).scalar() or 0
+    booked_seats = max(total_seats - seats_left, 0)
+    demand_level = getattr(f, 'demand_level', 'medium') or 'medium'
+    try:
+        current_price = compute_dynamic_price(f.base_price, f.departure_time, total_seats, booked_seats, demand_level, tier="ECONOMY")
+    except Exception:
+        current_price = float(f.base_price or 0.0)
+
     return FlightResponse(
         id=f.id,
         airline=airline.name if airline else "",
@@ -143,6 +165,7 @@ def get_flight(flight_id: int = Path(..., ge=1), db: Session = Depends(get_db)):
         departure_time=f.departure_time,
         arrival_time=f.arrival_time,
         base_price=f.base_price,
+        current_price=current_price,
         seats_left=seats_left,
     )
 
@@ -230,6 +253,14 @@ def update_flight(flight_id: int, payload: FlightUpdate = Body(...), db: Session
     airline = db.query(Airline).filter(Airline.id == f.airline_id).first()
     seats_left = db.query(func.count(Seat.id)).filter(Seat.flight_id == f.id, Seat.is_available == True).scalar() or 0
     aircraft = db.query(Aircraft).filter(Aircraft.id == f.aircraft_id).first()
+    total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == f.id).scalar() or 0
+    booked_seats = max(total_seats - seats_left, 0)
+    demand_level = getattr(f, 'demand_level', 'medium') or 'medium'
+    try:
+        current_price = compute_dynamic_price(f.base_price, f.departure_time, total_seats, booked_seats, demand_level, tier="ECONOMY")
+    except Exception:
+        current_price = float(f.base_price or 0.0)
+
     return FlightResponse(
         id=f.id,
         airline=airline.name if airline else "",
@@ -240,6 +271,7 @@ def update_flight(flight_id: int, payload: FlightUpdate = Body(...), db: Session
         departure_time=f.departure_time,
         arrival_time=f.arrival_time,
         base_price=f.base_price,
+        current_price=current_price,
         seats_left=seats_left,
     )
 

@@ -22,7 +22,7 @@ class TicketResponse(BaseModel):
     arrival_time: datetime
     seat_number: Optional[str]
     seat_class: str
-    price_paid: float
+    payment_required: float
     currency: str
     ticket_number: Optional[str]
     issued_at: Optional[datetime]

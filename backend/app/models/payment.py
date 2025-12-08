@@ -17,4 +17,4 @@ class Payment(Base):
     transaction_id = Column(String(100), unique=True)
     paid_at = Column(DateTime, default=datetime.utcnow)
 
-    booking = relationship("Booking", back_populates="payment")
+    booking = relationship("Booking", back_populates="payments")
