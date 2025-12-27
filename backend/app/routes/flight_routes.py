@@ -158,14 +158,20 @@ def get_flight(flight_id: int = Path(..., ge=1), db: Session = Depends(get_db)):
     return FlightResponse(
         id=f.id,
         airline=airline.name if airline else "",
+        airline_name=airline.name if airline else "",
         flight_number=f.flight_number,
         aircraft_model=aircraft.model if aircraft else None,
         source=dep.code if dep else "",
         destination=arr.code if arr else "",
+        departure_airport_code=dep.code if dep else "",
+        arrival_airport_code=arr.code if arr else "",
+        departure_city=dep.city if dep else "",
+        arrival_city=arr.city if arr else "",
         departure_time=f.departure_time,
         arrival_time=f.arrival_time,
         base_price=f.base_price,
         current_price=current_price,
+        dynamic_price=current_price,
         seats_left=seats_left,
     )
 

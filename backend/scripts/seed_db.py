@@ -175,8 +175,43 @@ def seed():
                     flight_count += 1
 
         print(f"Seeded {len(airline_objs)} airlines, {len(airport_objs)} airports, {len(aircraft_objs)} aircrafts, {flight_count} flights")
+        
+        # Create default admin user
+        create_admin_user(db)
+        
     finally:
         db.close()
+
+
+def create_admin_user(db):
+    """Create a default admin user if not exists."""
+    from app.models.user import User
+    from app.auth.password import hash_password
+    
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@gaganyatra.com")
+    admin_password = os.getenv("ADMIN_PASSWORD", "Admin@123")
+    
+    existing = db.query(User).filter(User.email == admin_email).first()
+    if existing:
+        print(f"Admin user already exists: {admin_email}")
+        return existing
+    
+    admin = User(
+        email=admin_email,
+        password_hash=hash_password(admin_password),
+        first_name="GaganYatra",
+        last_name="Admin",
+        mobile="+919999999999",
+        country="India",
+        role="admin",
+        is_active=True,
+        is_verified=True,
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+    print(f"Created admin user: {admin_email} with password: {admin_password}")
+    return admin
 
 
 if __name__ == "__main__":

@@ -1,0 +1,712 @@
+/* ===== Booking Confirmation Page ===== */
+.confirmation-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+}
+
+.confirmation-main {
+  flex: 1;
+  padding: 40px 24px;
+}
+
+.confirmation-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.confirmation-loading,
+.confirmation-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 20px;
+  text-align: center;
+}
+
+.confirmation-error {
+  color: var(--accent-red);
+}
+
+.confirmation-error h2 {
+  color: var(--text-primary);
+}
+
+/* ===== Success Header ===== */
+.success-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.success-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+  margin-bottom: 20px;
+  animation: scaleIn 0.5s ease;
+}
+
+@keyframes scaleIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.success-header h1 {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.success-header p {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* ===== PNR Card ===== */
+.pnr-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 32px;
+  background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+  border-radius: var(--radius-xl);
+  margin-bottom: 32px;
+}
+
+.pnr-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pnr-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.pnr-value {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pnr-value span {
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: 2px;
+}
+
+.copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.copy-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.pnr-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.action-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ===== Ticket Card ===== */
+.ticket-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  margin-bottom: 32px;
+}
+
+.ticket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 28px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ticket-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--primary-color);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 16px;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.status-badge.confirmed {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--accent-green);
+}
+
+.status-badge.pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.status-badge.cancelled {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--accent-red);
+}
+
+/* ===== Flight Info ===== */
+.ticket-flight {
+  padding: 28px;
+}
+
+.flight-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.flight-number {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.airline {
+  font-size: 14px;
+  color: var(--text-secondary);
+  padding-left: 12px;
+  border-left: 1px solid var(--border-color);
+}
+
+.flight-route {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.route-city {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.route-city.departure {
+  text-align: left;
+}
+
+.route-city.arrival {
+  text-align: right;
+}
+
+.route-city .time {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.route-city .city {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.route-city .airport {
+  font-size: 12px;
+  color: var(--text-secondary);
+  max-width: 150px;
+}
+
+.route-city .date {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.route-visual {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.route-line {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+}
+
+.route-line .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.route-line .dot.start {
+  background: var(--primary-color);
+}
+
+.route-line .dot.end {
+  background: var(--accent-green);
+}
+
+.route-line .line {
+  flex: 1;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary-color), var(--primary-light));
+}
+
+.route-line .plane-icon {
+  color: var(--primary-color);
+  transform: rotate(90deg);
+}
+
+.route-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ===== Ticket Divider ===== */
+.ticket-divider {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.ticket-divider .tear {
+  width: 20px;
+  height: 40px;
+  background: var(--bg-primary);
+  border-radius: 50%;
+}
+
+.ticket-divider .tear.left {
+  margin-left: -10px;
+}
+
+.ticket-divider .tear.right {
+  margin-right: -10px;
+}
+
+.ticket-divider .divider-line {
+  flex: 1;
+  height: 0;
+  border-top: 2px dashed var(--border-color);
+}
+
+/* ===== Passengers ===== */
+.ticket-passengers {
+  padding: 24px 28px;
+}
+
+.ticket-passengers h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.passengers-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.passenger-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.passenger-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 50%;
+  color: var(--primary-color);
+}
+
+.passenger-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.passenger-details .name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.passenger-details .meta {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.passenger-details .seat {
+  font-size: 13px;
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.passenger-details .class {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  margin-top: 4px;
+  width: fit-content;
+}
+
+.ticket-number {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.ticket-number .label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.ticket-number .value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+/* ===== Booking Summary ===== */
+.ticket-summary {
+  padding: 20px 28px;
+  background: var(--bg-tertiary);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-row .label {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summary-row .value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.summary-row .value.highlight {
+  color: var(--primary-color);
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.summary-row .value.paid {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent-green);
+}
+
+/* ===== Ticket Footer ===== */
+.ticket-footer {
+  padding: 24px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.barcode {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.barcode-lines {
+  display: flex;
+  gap: 2px;
+  height: 40px;
+}
+
+.barcode-lines .bar {
+  background: var(--text-primary);
+}
+
+.barcode-text {
+  font-size: 12px;
+  font-family: monospace;
+  color: var(--text-secondary);
+  letter-spacing: 2px;
+}
+
+.footer-note {
+  text-align: right;
+}
+
+.footer-note p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+/* ===== Quick Actions ===== */
+.quick-actions {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+.quick-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 32px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.quick-action:hover {
+  background: var(--bg-tertiary);
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.quick-action span {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* ===== Important Info ===== */
+.important-info {
+  padding: 24px;
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-lg);
+}
+
+.important-info h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f59e0b;
+  margin-bottom: 12px;
+}
+
+.important-info ul {
+  list-style: none;
+  padding: 0;
+}
+
+.important-info li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.important-info li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #f59e0b;
+}
+
+.important-info li:last-child {
+  margin-bottom: 0;
+}
+
+/* ===== Print Styles ===== */
+@media print {
+  .navbar,
+  .footer,
+  .pnr-card,
+  .quick-actions,
+  .important-info {
+    display: none !important;
+  }
+  
+  .confirmation-page {
+    background: white;
+  }
+  
+  .ticket-card {
+    border: 2px solid #333;
+    box-shadow: none;
+  }
+  
+  .ticket-header,
+  .ticket-summary {
+    background: #f5f5f5;
+  }
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 768px) {
+  .confirmation-main {
+    padding: 20px 16px;
+  }
+  
+  .pnr-card {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+    padding: 20px;
+  }
+  
+  .pnr-value span {
+    font-size: 24px;
+  }
+  
+  .pnr-actions {
+    width: 100%;
+    justify-content: center;
+  }
+  
+  .flight-route {
+    flex-direction: column;
+    gap: 24px;
+  }
+  
+  .route-city.departure,
+  .route-city.arrival {
+    text-align: center;
+  }
+  
+  .route-visual {
+    width: 100%;
+  }
+  
+  .route-line {
+    flex-direction: column;
+    height: 60px;
+    width: auto;
+  }
+  
+  .route-line .line {
+    width: 2px;
+    height: 100%;
+  }
+  
+  .route-line .plane-icon {
+    transform: rotate(180deg);
+  }
+  
+  .ticket-summary {
+    grid-template-columns: 1fr;
+  }
+  
+  .ticket-footer {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .footer-note {
+    text-align: center;
+  }
+  
+  .quick-actions {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .quick-action {
+    flex-direction: row;
+    justify-content: center;
+    padding: 16px;
+  }
+}

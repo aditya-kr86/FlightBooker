@@ -151,3 +151,45 @@ def generate_pnr_string(booking_id: int) -> str:
     year_suffix = str(datetime.utcnow().year)[-2:]
     pnr = f"GJ{year_suffix}{booking_id:06d}"
     return pnr.upper()
+
+
+def generate_ticket_pdf_from_booking(booking) -> bytes:
+    """
+    Generate a PDF ticket from a Booking model object.
+    
+    Args:
+        booking: SQLAlchemy Booking model with tickets relationship
+    
+    Returns:
+        PDF bytes
+    """
+    # Get user name from first ticket or booking
+    user_name = "Guest"
+    if booking.tickets:
+        user_name = booking.tickets[0].passenger_name
+    
+    booking_data = {
+        "pnr": booking.pnr,
+        "booking_reference": booking.booking_reference,
+        "status": booking.status,
+        "created_at": booking.created_at,
+        "user_name": user_name,
+    }
+    
+    tickets_data = []
+    for t in booking.tickets:
+        tickets_data.append({
+            "ticket_number": t.ticket_number,
+            "passenger_name": t.passenger_name,
+            "flight_number": t.flight_number,
+            "route": t.route,
+            "departure_time": t.departure_time,
+            "arrival_time": t.arrival_time,
+            "seat_number": t.seat_number or "TBA",
+            "seat_class": t.seat_class or "Economy",
+            "fare": t.payment_required or 0.0,
+            "currency": t.currency or "INR",
+        })
+    
+    buffer = generate_ticket_pdf(booking_data, tickets_data)
+    return buffer.getvalue()

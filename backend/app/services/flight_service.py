@@ -105,6 +105,22 @@ def search_flights(db: Session, origin: str | None = None, destination: str | No
         total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id).scalar() or 0
         booked_seats = max(total_seats - seats_left, 0)
 
+        # compute seats left per class
+        seats_by_class = {}
+        class_mapping = {
+            "Economy": "ECONOMY",
+            "Premium Economy": "ECONOMY_FLEX",
+            "Business": "BUSINESS",
+            "First": "FIRST"
+        }
+        for db_class, api_class in class_mapping.items():
+            count = db.query(func.count(Seat.id)).filter(
+                Seat.flight_id == flight.id,
+                Seat.seat_class == db_class,
+                Seat.is_available == True
+            ).scalar() or 0
+            seats_by_class[api_class] = count
+
         # determine demand level (fallback to medium)
         demand_level = getattr(flight, 'demand_level', 'medium') or 'medium'
 
@@ -162,6 +178,7 @@ def search_flights(db: Session, origin: str | None = None, destination: str | No
             "current_price": current_price,
             "price_map": price_map,
             "seats_left": seats_left,
+            "seats_by_class": seats_by_class,
         })
 
     # If tier == all and page/page_size provided, cache the result for short TTL
@@ -441,7 +458,11 @@ def create_payment(db: Session, booking_reference: str, amount: float, method: s
     for t in booking.tickets:
         # allocate next available seat for this ticket's class
         cls_norm = (t.seat_class or "Economy").strip().lower()
-        seat = db.query(Seat).filter(Seat.flight_id == t.flight_id, Seat.is_available == True, func.lower(Seat.seat_class) == cls_norm).order_by(Seat.id.asc()).with_for_update().first()
+        seat = db.query(Seat).filter(
+            Seat.flight_id == t.flight_id, 
+            Seat.is_available == True, 
+            func.lower(Seat.seat_class) == cls_norm
+        ).order_by(Seat.id.asc()).with_for_update().first()
         if not seat:
             # this should not happen because we checked availability earlier; treat as failure
             tx.status = "Failed"
@@ -449,7 +470,11 @@ def create_payment(db: Session, booking_reference: str, amount: float, method: s
             db.commit()
             db.refresh(tx)
             return tx
+        # Mark seat as unavailable immediately and flush to prevent duplicate allocation
         seat.is_available = False
+        seat.booking_id = booking.id
+        db.flush()  # Flush to database so next query sees this seat as unavailable
+        
         t.seat_id = seat.id
         t.seat_number = seat.seat_number
         if not t.ticket_number:

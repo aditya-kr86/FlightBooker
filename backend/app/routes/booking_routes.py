@@ -1,11 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.config import get_db
 from app.schemas.booking_schema import BookingCreate, BookingResponse, TicketInfoSimplified
 from app.services.flight_service import create_booking, get_booking_by_pnr, cancel_booking
+from app.services.email_service import send_cancellation_email
 from app.models.flight import Flight
+from app.models.user import User
 from app.schemas.booking_schema import BookingUpdate
+from app.auth.dependencies import get_current_user, require_admin
 from fastapi import Body
+from datetime import datetime
 
 router = APIRouter()
 
@@ -49,7 +53,12 @@ def _ticket_to_simplified(ticket) -> TicketInfoSimplified:
 
 
 @router.post("/", response_model=BookingResponse, status_code=status.HTTP_201_CREATED)
-def create_booking_api(payload: BookingCreate, db: Session = Depends(get_db)):
+def create_booking_api(
+    payload: BookingCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new booking. Requires authentication."""
     # transform payload passengers to expected dict format
     passengers = []
     for p in payload.passengers:
@@ -60,6 +69,9 @@ def create_booking_api(payload: BookingCreate, db: Session = Depends(get_db)):
             "gender": p.gender,
         }
         passengers.append(entry)
+    
+    # Use the authenticated user's ID
+    user_id = current_user.id
     
     # resolve flight_number + departure_date -> flight_id
     from datetime import datetime as dt
@@ -81,7 +93,7 @@ def create_booking_api(payload: BookingCreate, db: Session = Depends(get_db)):
     try:
         result = create_booking(
             db,
-            user_id=payload.user_id,
+            user_id=user_id,
             flight_id=flight.id,
             departure_date=payload.departure_date,
             passengers=passengers,
@@ -170,19 +182,63 @@ def get_booking_api(pnr: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{pnr}")
-def cancel_booking_api(pnr: str, db: Session = Depends(get_db)):
-    booking = cancel_booking(db, pnr)
+def cancel_booking_api(
+    pnr: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cancel a booking. Users can only cancel their own bookings. Admins can cancel any."""
+    booking = get_booking_by_pnr(db, pnr)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
+    
+    # Check if user owns this booking or is admin
+    if booking.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="You can only cancel your own bookings")
+    
+    # Get user email and ticket details before cancellation
+    user_email = current_user.email
+    total_fare = sum(t.payment_required for t in booking.tickets) if booking.tickets else 0.0
+    tickets_data = [
+        {
+            "passenger_name": t.passenger_name,
+            "flight_number": t.flight_number,
+            "route": t.route,
+            "seat_number": t.seat_number or "N/A",
+            "seat_class": t.seat_class or "Economy",
+        }
+        for t in booking.tickets
+    ]
+    
+    # Cancel the booking
+    booking = cancel_booking(db, pnr)
+    
+    # Send cancellation email in background
+    cancellation_data = {
+        "pnr": pnr,
+        "total_fare": total_fare,
+        "refund_amount": total_fare,  # Full refund for now, can add logic for partial
+        "tickets": tickets_data,
+        "cancelled_at": datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    background_tasks.add_task(send_cancellation_email, user_email, cancellation_data)
+    
     return {"message": "Booking cancelled", "pnr": booking.pnr}
 
 
 @router.patch("/{pnr}", response_model=BookingResponse)
-def patch_booking_api(pnr: str, payload: BookingUpdate = Body(...), db: Session = Depends(get_db)):
+def patch_booking_api(
+    pnr: str,
+    payload: BookingUpdate = Body(...),
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Update booking status (Admin only)."""
     booking = get_booking_by_pnr(db, pnr)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     if "status" in data and data.get("status"):
         booking.status = data.get("status")
     db.commit()

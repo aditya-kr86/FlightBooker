@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.config import get_db
 from app.schemas.payment_schema import PaymentCreate, PaymentResponse, PaymentUpdate
 from app.schemas.booking_schema import BookingResponse, TicketInfoSimplified
 from app.models.booking import Booking
+from app.models.user import User
 from app.services.flight_service import create_payment, get_payment_by_transaction
+from app.services.email_service import send_booking_confirmation_email
+from app.utils.pdf_generator import generate_ticket_pdf_from_booking
 
 router = APIRouter()
 
@@ -47,7 +50,11 @@ def _ticket_to_simplified(ticket) -> TicketInfoSimplified:
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-def create_payment_api(payload: PaymentCreate, db: Session = Depends(get_db)):
+def create_payment_api(
+    payload: PaymentCreate, 
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     # very small validation
     if payload.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be > 0")
@@ -58,17 +65,30 @@ def create_payment_api(payload: PaymentCreate, db: Session = Depends(get_db)):
         tx = create_payment(db, booking_reference=identifier, amount=payload.amount, method=payload.method)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    # If payment failed, reject with 400 error
+    
+    # Load booking for email sending
+    booking = db.query(Booking).filter(Booking.id == tx.booking_id).first()
+    user = db.query(User).filter(User.id == booking.user_id).first() if booking else None
+    
+    # If payment failed, send failure email and reject
     if tx.status != "Success":
-        booking_for_calc = db.query(Booking).filter(Booking.id == tx.booking_id).first()
-        required_amount = sum(t.payment_required for t in booking_for_calc.tickets) if booking_for_calc else 0
+        required_amount = sum(t.payment_required for t in booking.tickets) if booking else 0
+        
+        # Send failure email in background
+        if user and user.email:
+            booking_data = {
+                "pnr": booking.booking_reference if booking else "N/A",
+                "status": "Failed",
+                "total_fare": required_amount,
+                "tickets": []
+            }
+            background_tasks.add_task(send_booking_confirmation_email, user.email, booking_data, None)
+        
         raise HTTPException(
             status_code=400,
             detail=f"payment failed: insufficient amount. Required: {required_amount}, Paid: {payload.amount}"
         )
 
-    # load updated booking (create_payment issues tickets and PNR on success)
-    booking = db.query(Booking).filter(Booking.id == tx.booking_id).first()
     if not booking:
         raise HTTPException(status_code=500, detail="payment recorded but booking not found")
 
@@ -77,6 +97,34 @@ def create_payment_api(payload: PaymentCreate, db: Session = Depends(get_db)):
 
     # Convert tickets to simplified format
     tickets = [_ticket_to_simplified(t) for t in booking.tickets]
+    
+    # Prepare booking data for email
+    booking_data = {
+        "pnr": booking.pnr,
+        "status": booking.status,
+        "total_fare": total_fare,
+        "tickets": [
+            {
+                "passenger_name": t.passenger_name,
+                "flight_number": t.flight_number,
+                "route": t.route,
+                "seat_number": t.seat_number or "TBA",
+                "seat_class": t.seat_class or "Economy",
+            }
+            for t in booking.tickets
+        ]
+    }
+    
+    # Generate PDF ticket
+    pdf_bytes = None
+    try:
+        pdf_bytes = generate_ticket_pdf_from_booking(booking)
+    except Exception as e:
+        print(f"[PDF ERROR] Failed to generate PDF: {e}")
+    
+    # Send confirmation email in background
+    if user and user.email:
+        background_tasks.add_task(send_booking_confirmation_email, user.email, booking_data, pdf_bytes)
 
     return BookingResponse(
         pnr=booking.pnr,

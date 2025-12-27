@@ -4,12 +4,18 @@ from app.config import get_db
 from typing import List
 from app.schemas.airline_schema import AirlineCreate, AirlineUpdate, AirlineResponse
 from app.models.airline import Airline
+from app.models.user import User
+from app.auth.dependencies import require_admin
 
 router = APIRouter()
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=AirlineResponse)
-def create_airline(payload: AirlineCreate, db: Session = Depends(get_db)):
+def create_airline(
+    payload: AirlineCreate,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     existing = db.query(Airline).filter(Airline.code == payload.code.upper()).first()
     if existing:
         raise HTTPException(status_code=400, detail="airline code already exists")
@@ -34,7 +40,12 @@ def get_airline(airline_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{airline_id}", response_model=AirlineResponse)
-def update_airline(airline_id: int, payload: AirlineCreate, db: Session = Depends(get_db)):
+def update_airline(
+    airline_id: int,
+    payload: AirlineCreate,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     al = db.query(Airline).filter(Airline.id == airline_id).first()
     if not al:
         raise HTTPException(status_code=404, detail="airline not found")
@@ -46,11 +57,16 @@ def update_airline(airline_id: int, payload: AirlineCreate, db: Session = Depend
 
 
 @router.patch("/{airline_id}", response_model=AirlineResponse)
-def patch_airline(airline_id: int, payload: AirlineUpdate = Body(...), db: Session = Depends(get_db)):
+def patch_airline(
+    airline_id: int,
+    payload: AirlineUpdate = Body(...),
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     al = db.query(Airline).filter(Airline.id == airline_id).first()
     if not al:
         raise HTTPException(status_code=404, detail="airline not found")
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     if "name" in data:
         al.name = data["name"]
     if "code" in data and data.get("code"):
@@ -61,7 +77,11 @@ def patch_airline(airline_id: int, payload: AirlineUpdate = Body(...), db: Sessi
 
 
 @router.delete("/{airline_id}")
-def delete_airline(airline_id: int, db: Session = Depends(get_db)):
+def delete_airline(
+    airline_id: int,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     al = db.query(Airline).filter(Airline.id == airline_id).first()
     if not al:
         raise HTTPException(status_code=404, detail="airline not found")

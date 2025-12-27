@@ -1,5 +1,7 @@
 from app.config import Base, engine
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes.auth_routes import router as auth_router
 from app.routes.flight_routes import router as flight_router
 from app.routes.booking_routes import router as booking_router
 from app.routes.payment_routes import router as payment_router
@@ -14,17 +16,70 @@ from app.services.flight_service import ensure_all_flight_seats
 from app.services.demand_simulator import run_demand_simulation_once
 import asyncio
 import logging
+import sys
+import os
+
+# Add scripts folder to path for importing seed module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
-app = FastAPI(title="GaganYatra - Flight Booking")
+app = FastAPI(
+    title="GaganYatra - Flight Booking API",
+    description="A comprehensive flight booking system with multi-level authentication",
+    version="2.0.0",
+)
+
+# CORS middleware to allow frontend connections
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:3000",
+    ],  # Vite dev server
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _sim_task = None
+
+
+def run_seed_if_empty():
+    """Run seed script if database is empty."""
+    from app.models.airport import Airport
+    from app.models.user import User
+    from scripts.seed_db import seed
+    
+    db = SessionLocal()
+    try:
+        airport_count = db.query(Airport).count()
+        admin_count = db.query(User).filter(User.role == "admin").count()
+        
+        if airport_count == 0 or admin_count == 0:
+            print("📦 Database is empty, running seed script...")
+            db.close()
+            seed()
+            print("✅ Seed data created successfully!")
+        else:
+            print(f"📊 Database already has {airport_count} airports and {admin_count} admin(s)")
+    except Exception as e:
+        print(f"⚠️ Could not check/seed database: {e}")
+    finally:
+        if db:
+            db.close()
 
 
 @app.on_event("startup")
 def create_tables_on_startup():
     # Ensure tables exist on startup for a smooth developer experience
     Base.metadata.create_all(bind=engine)
+    
+    # Auto-seed database if empty
+    run_seed_if_empty()
+    
     # Ensure seats exist for existing flights (reconcile seed data)
     try:
         db = SessionLocal()
@@ -85,23 +140,37 @@ async def stop_background_tasks():
         except asyncio.CancelledError:
             pass
 
+# ============== API Routes ==============
+
+# Authentication (public)
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+
+# Public routes
+app.include_router(flight_router, prefix="/flights", tags=["Flights"])
+
+# User routes (authenticated)
+app.include_router(user_router, prefix="/users", tags=["Users"])
+
+# Admin managed resources
 app.include_router(airline_router, prefix="/airlines", tags=["Airlines"])
 app.include_router(airport_router, prefix="/airports", tags=["Airports"])
 app.include_router(aircraft_router, prefix="/aircrafts", tags=["Aircrafts"])
 app.include_router(seat_router, prefix="/seats", tags=["Seats"])
 
-app.include_router(user_router, prefix="/users", tags=["Users"])
+# Booking & Payment
+app.include_router(booking_router, prefix="/bookings", tags=["Bookings"])
+app.include_router(payment_router, prefix="/payments", tags=["Payments"])
+app.include_router(ticket_router, prefix="/tickets", tags=["Tickets"])
 
-app.include_router(flight_router, prefix="/flights", tags=["Flight Search"])
-
-# Simulation control
+# Simulation control (Admin)
 from app.routes.demand_routes import router as demand_router
 app.include_router(demand_router, prefix="/demand", tags=["Demand Simulator"])
 
-app.include_router(booking_router, prefix="/bookings", tags=["Bookings"])
-app.include_router(payment_router, prefix="/payments", tags=["Payments"])
 
-app.include_router(ticket_router, prefix="/tickets", tags=["Tickets"])
+# Run the server
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
 
 
 

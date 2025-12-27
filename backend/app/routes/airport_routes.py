@@ -2,14 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session
 from app.config import get_db
 from app.models.airport import Airport
+from app.models.user import User
 from typing import List
 from app.schemas.airport_schema import AirportCreate, AirportUpdate, AirportResponse
+from app.auth.dependencies import require_admin
 
 router = APIRouter()
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=AirportResponse)
-def create_airport(payload: AirportCreate, db: Session = Depends(get_db)):
+def create_airport(
+    payload: AirportCreate,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     existing = db.query(Airport).filter(Airport.code == payload.code.upper()).first()
     if existing:
         raise HTTPException(status_code=400, detail="airport code already exists")
@@ -34,7 +40,12 @@ def get_airport(airport_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{airport_id}", response_model=AirportResponse)
-def update_airport(airport_id: int, payload: AirportCreate, db: Session = Depends(get_db)):
+def update_airport(
+    airport_id: int,
+    payload: AirportCreate,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     ap = db.query(Airport).filter(Airport.id == airport_id).first()
     if not ap:
         raise HTTPException(status_code=404, detail="airport not found")
@@ -48,11 +59,16 @@ def update_airport(airport_id: int, payload: AirportCreate, db: Session = Depend
 
 
 @router.patch("/{airport_id}", response_model=AirportResponse)
-def patch_airport(airport_id: int, payload: AirportUpdate = Body(...), db: Session = Depends(get_db)):
+def patch_airport(
+    airport_id: int,
+    payload: AirportUpdate = Body(...),
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     ap = db.query(Airport).filter(Airport.id == airport_id).first()
     if not ap:
         raise HTTPException(status_code=404, detail="airport not found")
-    data = payload.dict(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True)
     if "code" in data and data.get("code"):
         ap.code = data["code"].upper()
     if "name" in data:
@@ -67,7 +83,11 @@ def patch_airport(airport_id: int, payload: AirportUpdate = Body(...), db: Sessi
 
 
 @router.delete("/{airport_id}")
-def delete_airport(airport_id: int, db: Session = Depends(get_db)):
+def delete_airport(
+    airport_id: int,
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
     ap = db.query(Airport).filter(Airport.id == airport_id).first()
     if not ap:
         raise HTTPException(status_code=404, detail="airport not found")
