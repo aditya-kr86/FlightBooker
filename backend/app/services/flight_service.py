@@ -201,6 +201,32 @@ def _generate_pnr(db: Session) -> str:
     return uuid.uuid4().hex[:8].upper()
 
 
+def _get_seat_position_type(seat_letter: str, seats_per_row: int = 6) -> str:
+    """Determine if seat is window, middle, or aisle based on letter and row configuration."""
+    if seats_per_row == 6:
+        # 3-3 configuration: A(window), B(middle), C(aisle) | D(aisle), E(middle), F(window)
+        if seat_letter in ['A', 'F']:
+            return 'window'
+        elif seat_letter in ['C', 'D']:
+            return 'aisle'
+        else:  # B, E
+            return 'middle'
+    elif seats_per_row == 4:
+        # 2-2 configuration: A(window), B(aisle) | C(aisle), D(window)
+        if seat_letter in ['A', 'D']:
+            return 'window'
+        else:
+            return 'aisle'
+    return 'middle'
+
+
+def _get_seat_surcharge(position_type: str, base_price: float) -> float:
+    """Calculate seat surcharge based on position type."""
+    from app.models.seat import SEAT_POSITION_SURCHARGE
+    rate = SEAT_POSITION_SURCHARGE.get(position_type, 0.0)
+    return round(base_price * rate, 2)
+
+
 def create_flight(db: Session, airline_id: int, aircraft_id: int, flight_number: str, departure_airport_id: int, arrival_airport_id: int, departure_time: datetime, arrival_time: datetime, base_price: float):
     """Create and persist a new Flight."""
     flight = Flight(
@@ -221,11 +247,28 @@ def create_flight(db: Session, airline_id: int, aircraft_id: int, flight_number:
     aircraft = db.query(Aircraft).filter(Aircraft.id == aircraft_id).first()
     if aircraft and getattr(aircraft, 'capacity', None):
         seats_to_create = []
+        seat_letters_6 = ['A', 'B', 'C', 'D', 'E', 'F']
+        
         # If an aircraft seat template exists, use it as the source of truth
         templates = db.query(AircraftSeatTemplate).filter(AircraftSeatTemplate.aircraft_id == aircraft.id).order_by(AircraftSeatTemplate.id.asc()).all()
         if templates:
             for tpl in templates:
-                seats_to_create.append(Seat(flight_id=flight.id, seat_number=tpl.seat_number, seat_class=tpl.seat_class, is_available=True))
+                seat_num = tpl.seat_number
+                row_num = int(''.join(filter(str.isdigit, seat_num)) or '1')
+                seat_letter = ''.join(filter(str.isalpha, seat_num)) or 'A'
+                seat_position = _get_seat_position_type(seat_letter, 6)
+                surcharge = _get_seat_surcharge(seat_position, base_price)
+                
+                seats_to_create.append(Seat(
+                    flight_id=flight.id,
+                    seat_number=seat_num,
+                    row_number=row_num,
+                    seat_letter=seat_letter,
+                    seat_class=tpl.seat_class,
+                    seat_position=seat_position,
+                    surcharge=surcharge,
+                    is_available=True
+                ))
         else:
             # prefer per-class counts when provided
             eco = int(getattr(aircraft, 'economy_count', 0) or 0)
@@ -239,13 +282,32 @@ def create_flight(db: Session, airline_id: int, aircraft_id: int, flight_number:
             else:
                 cap = int(aircraft.capacity)
 
-            # Build seats by class blocks. Order: First, Business, Premium Economy, Economy
-            idx = 1
+            # Build seats by class blocks with proper seat numbers
+            current_row = 1
+            seat_in_row = 0
+            
             def add_block(count, cls_name):
-                nonlocal idx
+                nonlocal current_row, seat_in_row
                 for _ in range(count):
-                    seats_to_create.append(Seat(flight_id=flight.id, seat_number=str(idx), seat_class=cls_name, is_available=True))
-                    idx += 1
+                    seat_letter = seat_letters_6[seat_in_row]
+                    seat_num = f"{current_row}{seat_letter}"
+                    seat_position = _get_seat_position_type(seat_letter, 6)
+                    surcharge = _get_seat_surcharge(seat_position, base_price)
+                    
+                    seats_to_create.append(Seat(
+                        flight_id=flight.id,
+                        seat_number=seat_num,
+                        row_number=current_row,
+                        seat_letter=seat_letter,
+                        seat_class=cls_name,
+                        seat_position=seat_position,
+                        surcharge=surcharge,
+                        is_available=True
+                    ))
+                    seat_in_row += 1
+                    if seat_in_row >= 6:
+                        seat_in_row = 0
+                        current_row += 1
 
             if first > 0:
                 add_block(first, "First")
@@ -258,8 +320,23 @@ def create_flight(db: Session, airline_id: int, aircraft_id: int, flight_number:
 
             # fallback: if no per-class counts and capacity set, create all Economy
             if not seats_to_create:
-                for i in range(1, cap + 1):
-                    seats_to_create.append(Seat(flight_id=flight.id, seat_number=str(i), seat_class="Economy", is_available=True))
+                for i in range(cap):
+                    row = (i // 6) + 1
+                    seat_letter = seat_letters_6[i % 6]
+                    seat_num = f"{row}{seat_letter}"
+                    seat_position = _get_seat_position_type(seat_letter, 6)
+                    surcharge = _get_seat_surcharge(seat_position, base_price)
+                    
+                    seats_to_create.append(Seat(
+                        flight_id=flight.id,
+                        seat_number=seat_num,
+                        row_number=row,
+                        seat_letter=seat_letter,
+                        seat_class="Economy",
+                        seat_position=seat_position,
+                        surcharge=surcharge,
+                        is_available=True
+                    ))
 
         if seats_to_create:
             db.add_all(seats_to_create)
@@ -269,11 +346,14 @@ def create_flight(db: Session, airline_id: int, aircraft_id: int, flight_number:
     return flight
 
 
-def create_booking(db: Session, user_id: int, flight_id: int, departure_date: str, passengers: list[dict], seat_class: str | None = None) -> dict:
+def create_booking(db: Session, user_id: int, flight_id: int, departure_date: str, passengers: list[dict], seat_class: str | None = None, selected_seat_ids: list[int] | None = None) -> dict:
     """Create booking with dynamic price computation and concurrency-safe seat allocation.
     
     Uses row-level locking (SELECT FOR UPDATE) to prevent race conditions when
     multiple users try to book the same seats simultaneously.
+    
+    If selected_seat_ids is provided, those specific seats will be allocated.
+    Otherwise, seats are auto-assigned from available inventory.
     
     Returns dict with 'booking' and 'total_fare' keys.
     """
@@ -309,21 +389,44 @@ def create_booking(db: Session, user_id: int, flight_id: int, departure_date: st
     # Lock and count available seats with FOR UPDATE to prevent concurrent allocation
     total_seats = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id).scalar() or 0
     
-    # Filter available seats by the requested class
-    available_seats = db.query(Seat).filter(
-        Seat.flight_id == flight.id, 
-        Seat.is_available == True,
-        Seat.seat_class == db_seat_class
-    ).with_for_update().all()
+    num_passengers = len(passengers)
     
-    available = len(available_seats)
+    # Handle specific seat selection vs auto-assignment
+    if selected_seat_ids and len(selected_seat_ids) == num_passengers:
+        # User selected specific seats - validate and lock them
+        allocated_seats = []
+        for seat_id in selected_seat_ids:
+            seat = db.query(Seat).filter(
+                Seat.id == seat_id,
+                Seat.flight_id == flight.id,
+                Seat.is_available == True
+            ).with_for_update().first()
+            
+            if not seat:
+                raise ValueError(f"Seat ID {seat_id} is not available or does not belong to this flight")
+            
+            # Validate seat class matches (optional - can be relaxed if needed)
+            if seat.seat_class != db_seat_class:
+                # Allow seat selection across classes but use the selected seat's class for pricing
+                pass  # We'll compute price per seat
+            
+            allocated_seats.append(seat)
+    else:
+        # Auto-assign seats from available inventory
+        available_seats = db.query(Seat).filter(
+            Seat.flight_id == flight.id, 
+            Seat.is_available == True,
+            Seat.seat_class == db_seat_class
+        ).with_for_update().all()
+        
+        available = len(available_seats)
+        if available < num_passengers:
+            raise ValueError(f"Not enough {db_seat_class} class seats available. Requested: {num_passengers}, Available: {available}")
+        
+        allocated_seats = available_seats[:num_passengers]
+    
     all_booked = db.query(func.count(Seat.id)).filter(Seat.flight_id == flight.id, Seat.is_available == False).scalar() or 0
     booked_seats = all_booked
-    
-    # Check if enough seats are available in the requested class
-    num_passengers = len(passengers)
-    if available < num_passengers:
-        raise ValueError(f"Not enough {db_seat_class} class seats available. Requested: {num_passengers}, Available: {available}")
     
     demand_level = getattr(flight, 'demand_level', 'medium') or 'medium'
     tier = requested_tier
@@ -337,8 +440,15 @@ def create_booking(db: Session, user_id: int, flight_id: int, departure_date: st
         tier=tier,
     )
 
-    # Total fare for all passengers
-    total_fare = dynamic_price * num_passengers
+    # Calculate total fare including seat surcharges
+    total_fare = 0.0
+    seat_prices = []
+    for seat in allocated_seats:
+        # Add seat position surcharge to base dynamic price
+        seat_surcharge = seat.surcharge or 0.0
+        seat_price = dynamic_price + seat_surcharge
+        seat_prices.append(seat_price)
+        total_fare += seat_price
 
     # Create booking
     booking_ref = "BKG" + uuid.uuid4().hex[:12].upper()
@@ -349,9 +459,6 @@ def create_booking(db: Session, user_id: int, flight_id: int, departure_date: st
     airline = db.query(Airline).filter(Airline.id == flight.airline_id).first()
     dep = db.query(Airport).filter(Airport.id == flight.departure_airport_id).first()
     arr = db.query(Airport).filter(Airport.id == flight.arrival_airport_id).first()
-
-    # Allocate seats to passengers (reserve them by marking unavailable)
-    allocated_seats = available_seats[:num_passengers]
     
     # Create tickets for each passenger with computed dynamic price and allocated seat
     for idx, p in enumerate(passengers):
@@ -359,6 +466,9 @@ def create_booking(db: Session, user_id: int, flight_id: int, departure_date: st
         # Mark seat as unavailable (reserved for this booking)
         seat.is_available = False
         seat.booking_id = booking.id
+        
+        # Price for this specific seat (includes surcharge)
+        passenger_fare = seat_prices[idx]
         
         ticket = Ticket(
             booking_id=booking.id,
@@ -378,7 +488,7 @@ def create_booking(db: Session, user_id: int, flight_id: int, departure_date: st
             arrival_time=flight.arrival_time,
             seat_number=seat.seat_number,
             seat_class=seat.seat_class,
-            payment_required=dynamic_price,  # Use computed dynamic price
+            payment_required=passenger_fare,  # Includes seat surcharge
             currency="INR",
             ticket_number=None
         )

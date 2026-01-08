@@ -141,6 +141,7 @@ def create_booking_api(
             "passenger_name": pname,
             "age": p.age,
             "gender": p.gender,
+            "seat_id": p.seat_id,  # Include seat_id if provided per passenger
         }
         passengers.append(entry)
     
@@ -164,6 +165,14 @@ def create_booking_api(
     if not flight:
         raise HTTPException(status_code=400, detail=f"flight '{payload.flight_number}' not found on {payload.departure_date}")
 
+    # Get selected seat IDs from payload (either from selected_seat_ids list or individual passenger seat_id)
+    selected_seat_ids = payload.selected_seat_ids
+    if not selected_seat_ids:
+        # Try to extract from individual passengers
+        seat_ids_from_passengers = [p.get("seat_id") for p in passengers if p.get("seat_id")]
+        if len(seat_ids_from_passengers) == len(passengers):
+            selected_seat_ids = seat_ids_from_passengers
+
     try:
         result = create_booking(
             db,
@@ -172,6 +181,7 @@ def create_booking_api(
             departure_date=payload.departure_date,
             passengers=passengers,
             seat_class=payload.seat_class,
+            selected_seat_ids=selected_seat_ids,
         )
         booking = result["booking"]
         total_fare = result["total_fare"]

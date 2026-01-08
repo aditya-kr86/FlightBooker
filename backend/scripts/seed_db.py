@@ -96,17 +96,16 @@ AIRPORTS_DATA = [
 ]
 
 AIRCRAFT_DATA = [
-    # (Model, Total Capacity, Economy, Business, Premium Economy, First Class)
-    ("Airbus A320neo", 180, 156, 12, 12, 0),
-    ("Airbus A321neo", 220, 188, 20, 12, 0),
-    ("Airbus A320ceo", 174, 150, 12, 12, 0),
-    ("Boeing 737-800", 168, 144, 12, 12, 0),
-    ("Boeing 737 MAX 8", 178, 154, 12, 12, 0),
-    ("ATR 72-600", 70, 70, 0, 0, 0),
-    ("Airbus A350-900", 300, 226, 36, 24, 14),
-    ("Boeing 787-8 Dreamliner", 256, 198, 30, 18, 10),
-    ("Boeing 777-300ER", 342, 256, 44, 28, 14),
-    ("Airbus A330-300", 280, 212, 36, 24, 8),
+    ("Airbus A320neo", 75, 45, 20, 0, 10),
+    ("Airbus A321neo", 85, 50, 25, 0, 10),
+    ("Airbus A320ceo", 90, 50, 25, 0, 15),
+    ("Boeing 737-800", 75, 45, 20, 0, 10),
+    ("Boeing 737 MAX 8", 85, 50, 25, 0, 10),
+    ("ATR 72-600", 90, 50, 25, 0, 15),
+    ("Airbus A350-900", 75, 45, 20, 0, 10),
+    ("Boeing 787-8 Dreamliner", 85, 50, 25, 0, 10),
+    ("Boeing 777-300ER", 90, 50, 25, 0, 15),
+    ("Airbus A330-300", 75, 45, 20, 0, 10),
 ]
 
 # Route data with approximate flight duration (minutes) and base price range
@@ -250,6 +249,44 @@ def generate_seat_number(row: int, seat_position: int, seats_per_row: int = 6) -
     }
     letters = seat_letters.get(seats_per_row, seat_letters[6])
     return f"{row}{letters[seat_position % len(letters)]}"
+
+
+def get_seat_position_type(seat_letter: str, seats_per_row: int = 6) -> str:
+    """Determine if seat is window, middle, or aisle based on letter and row configuration."""
+    if seats_per_row == 6:
+        # 3-3 configuration: A(window), B(middle), C(aisle) | D(aisle), E(middle), F(window)
+        if seat_letter in ['A', 'F']:
+            return 'window'
+        elif seat_letter in ['C', 'D']:
+            return 'aisle'
+        else:  # B, E
+            return 'middle'
+    elif seats_per_row == 4:
+        # 2-2 configuration: A(window), B(aisle) | C(aisle), D(window)
+        if seat_letter in ['A', 'D']:
+            return 'window'
+        else:  # B, C
+            return 'aisle'
+    elif seats_per_row == 3:
+        # 1-1-1 or similar small config
+        if seat_letter == 'A':
+            return 'window'
+        elif seat_letter == 'C':
+            return 'window'
+        else:
+            return 'aisle'
+    return 'middle'  # fallback
+
+
+def get_seat_surcharge(position_type: str, base_price: float) -> float:
+    """Calculate seat surcharge based on position type."""
+    surcharge_rates = {
+        'window': 0.05,   # 5% extra for window
+        'aisle': 0.03,    # 3% extra for aisle
+        'middle': 0.0,    # No extra for middle
+    }
+    rate = surcharge_rates.get(position_type, 0.0)
+    return round(base_price * rate, 2)
 
 
 def generate_seat_templates_data(aircraft_id: int, aircraft) -> list[dict]:
@@ -581,26 +618,47 @@ def seed():
                     if templates:
                         for tpl in templates:
                             is_available = random.random() > 0.1
+                            seat_num = tpl["seat_number"]
+                            # Parse row number and seat letter
+                            row_num = int(''.join(filter(str.isdigit, seat_num)) or '1')
+                            seat_letter = ''.join(filter(str.isalpha, seat_num)) or 'A'
+                            seat_position = get_seat_position_type(seat_letter, 6)
+                            surcharge = get_seat_surcharge(seat_position, base_price)
+                            
                             seat_batch.append({
                                 "flight_id": flight.id,
-                                "seat_number": tpl["seat_number"],
+                                "seat_number": seat_num,
+                                "row_number": row_num,
+                                "seat_letter": seat_letter,
                                 "seat_class": tpl["seat_class"],
-                                "is_available": is_available
+                                "seat_position": seat_position,
+                                "is_available": is_available,
+                                "surcharge": surcharge
                             })
                     else:
                         # Fallback economy seats
                         cap = getattr(aircraft, 'capacity', 150) or 150
                         seat_count = 0
+                        seat_letters_list = ['A', 'B', 'C', 'D', 'E', 'F']
                         for row in range(1, (cap // 6) + 2):
                             for seat_pos in range(6):
                                 if seat_count >= cap:
                                     break
                                 is_available = random.random() > 0.1
+                                seat_num = generate_seat_number(row, seat_pos, 6)
+                                seat_letter = seat_letters_list[seat_pos]
+                                seat_position = get_seat_position_type(seat_letter, 6)
+                                surcharge = get_seat_surcharge(seat_position, base_price)
+                                
                                 seat_batch.append({
                                     "flight_id": flight.id,
-                                    "seat_number": generate_seat_number(row, seat_pos, 6),
+                                    "seat_number": seat_num,
+                                    "row_number": row,
+                                    "seat_letter": seat_letter,
                                     "seat_class": "Economy",
-                                    "is_available": is_available
+                                    "seat_position": seat_position,
+                                    "is_available": is_available,
+                                    "surcharge": surcharge
                                 })
                                 seat_count += 1
                     

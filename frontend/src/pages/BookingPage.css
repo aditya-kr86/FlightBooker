@@ -697,7 +697,20 @@
 .sidebar-info p:last-child {
   margin-bottom: 0;
 }
+/* ===== Seat Selection Step ===== */
+.seat-surcharge-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-green);
+  padding: 4px 10px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: var(--radius-full);
+  margin-left: auto;
+}
 
+.price-row.surcharge {
+  color: var(--accent-green);
+}
 /* ===== Responsive ===== */
 @media (max-width: 1024px) {
   .booking-content {

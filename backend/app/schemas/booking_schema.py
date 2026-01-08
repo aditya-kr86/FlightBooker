@@ -7,6 +7,7 @@ class Passenger(BaseModel):
     passenger_name: Optional[str] = None
     age: Optional[int] = None
     gender: Optional[str] = None
+    seat_id: Optional[int] = None  # Specific seat selected by user
     # NOTE: fare is NO LONGER accepted; will be computed from dynamic pricing
 
 
@@ -16,6 +17,7 @@ class BookingCreate(BaseModel):
     departure_date: str  # YYYY-MM-DD to validate correct flight and date
     passengers: List[Passenger]
     seat_class: Optional[str] = None
+    selected_seat_ids: Optional[List[int]] = None  # List of specific seat IDs (one per passenger)
 
     model_config = ConfigDict(json_schema_extra={
             "example": {
@@ -23,9 +25,10 @@ class BookingCreate(BaseModel):
                 "flight_number": "AI-123",
                 "departure_date": "2025-12-15",
                 "passengers": [
-                    {"passenger_name": "John Doe", "age": 30, "gender": "M"}
+                    {"passenger_name": "John Doe", "age": 30, "gender": "M", "seat_id": 42}
                 ],
-                "seat_class": "Economy"
+                "seat_class": "Economy",
+                "selected_seat_ids": [42]
             }
         })
 

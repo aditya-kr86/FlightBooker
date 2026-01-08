@@ -3,19 +3,21 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/common/Navbar';
 import Footer from '../components/common/Footer';
+import SeatSelector from '../components/common/SeatSelector';
 import { flightAPI } from '../api/flights';
 import api from '../api/config';
 import { 
   Plane, Users, CreditCard, CheckCircle, ArrowLeft, ArrowRight,
   User, Calendar, MapPin, Clock, AlertCircle, Loader2,
-  IndianRupee, Shield, ChevronRight, Plus, Trash2
+  IndianRupee, Shield, ChevronRight, Plus, Trash2, Armchair
 } from 'lucide-react';
 import './BookingPage.css';
 
 const STEPS = [
   { id: 1, name: 'Passenger Details', icon: Users },
-  { id: 2, name: 'Review Booking', icon: CheckCircle },
-  { id: 3, name: 'Payment', icon: CreditCard },
+  { id: 2, name: 'Select Seats', icon: Armchair },
+  { id: 3, name: 'Review Booking', icon: CheckCircle },
+  { id: 4, name: 'Payment', icon: CreditCard },
 ];
 
 const BookingPage = () => {
@@ -49,6 +51,10 @@ const BookingPage = () => {
     }))
   );
 
+  // Seat selection state
+  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [seatSurcharge, setSeatSurcharge] = useState(0);
+
   // Add new passenger
   const addPassenger = () => {
     if (passengers.length >= 9) {
@@ -56,6 +62,9 @@ const BookingPage = () => {
       return;
     }
     setPassengers(prev => [...prev, { passenger_name: '', age: '', gender: '' }]);
+    // Clear seat selection when passenger count changes
+    setSelectedSeats([]);
+    setSeatSurcharge(0);
     setError('');
   };
 
@@ -63,7 +72,17 @@ const BookingPage = () => {
   const removePassenger = (index) => {
     if (passengers.length <= 1) return;
     setPassengers(prev => prev.filter((_, i) => i !== index));
+    // Clear seat selection when passenger count changes
+    setSelectedSeats([]);
+    setSeatSurcharge(0);
     setError('');
+  };
+
+  // Handle seat selection from SeatSelector component
+  const handleSeatSelect = (seats) => {
+    setSelectedSeats(seats);
+    const totalSurcharge = seats.reduce((sum, seat) => sum + (seat.surcharge || 0), 0);
+    setSeatSurcharge(totalSurcharge);
   };
 
   // Payment form state
@@ -128,7 +147,8 @@ const BookingPage = () => {
 
   // Use locked price for all calculations - use actual passengers.length for dynamic count
   const tierPrice = lockedPrice;
-  const totalPrice = tierPrice * passengers.length;
+  const baseTotalPrice = tierPrice * passengers.length;
+  const totalPrice = baseTotalPrice + seatSurcharge; // Include seat surcharges
 
   // Handle passenger input change
   const handlePassengerChange = (index, field, value) => {
@@ -174,7 +194,15 @@ const BookingPage = () => {
       }
     }
     
-    if (currentStep === 3) {
+    if (currentStep === 2) {
+      // Validate seat selection
+      if (selectedSeats.length !== passengers.length) {
+        setError(`Please select ${passengers.length} seat(s) for all passengers. Currently selected: ${selectedSeats.length}`);
+        return false;
+      }
+    }
+    
+    if (currentStep === 4) {
       // Validate payment
       if (paymentMethod === 'card') {
         if (!cardDetails.number || cardDetails.number.replace(/\s/g, '').length !== 16) {
@@ -213,7 +241,7 @@ const BookingPage = () => {
   // Handle next step
   const handleNext = () => {
     if (validateStep()) {
-      setCurrentStep(prev => Math.min(prev + 1, 3));
+      setCurrentStep(prev => Math.min(prev + 1, 4));
     }
   };
 
@@ -231,19 +259,24 @@ const BookingPage = () => {
     setError('');
 
     try {
-      // Step 1: Create booking
+      // Step 1: Create booking with selected seats
       const departureDate = new Date(flight.departure_time).toISOString().split('T')[0];
+      
+      // Include selected seat IDs in the booking payload
+      const selectedSeatIds = selectedSeats.map(s => s.id);
       
       const bookingPayload = {
         user_id: user.id,
         flight_number: flight.flight_number,
         departure_date: departureDate,
-        passengers: passengers.map(p => ({
+        passengers: passengers.map((p, idx) => ({
           passenger_name: p.passenger_name,
           age: parseInt(p.age),
           gender: p.gender,
+          seat_id: selectedSeatIds[idx] || null,
         })),
         seat_class: seatTier,
+        selected_seat_ids: selectedSeatIds,
       };
 
       const bookingResponse = await api.post('/bookings/', bookingPayload);
@@ -444,8 +477,28 @@ const BookingPage = () => {
                 </div>
               )}
 
-              {/* Step 2: Review Booking */}
+              {/* Step 2: Select Seats */}
               {currentStep === 2 && (
+                <div className="step-content">
+                  <h2>Select Your Seats</h2>
+                  <p className="step-description">
+                    Choose preferred seats for each passenger. Window and aisle seats have additional surcharges.
+                  </p>
+
+                  <SeatSelector
+                    flightId={parseInt(flightId)}
+                    seatClass={seatTier}
+                    passengerCount={passengers.length}
+                    passengers={passengers}
+                    selectedSeats={selectedSeats}
+                    onSeatSelect={handleSeatSelect}
+                    basePrice={tierPrice}
+                  />
+                </div>
+              )}
+
+              {/* Step 3: Review Booking */}
+              {currentStep === 3 && (
                 <div className="step-content">
                   <h2>Review Your Booking</h2>
                   <p className="step-description">Please verify all details before proceeding to payment</p>
@@ -509,9 +562,9 @@ const BookingPage = () => {
                     </div>
                   </div>
 
-                  {/* Passengers Summary */}
+                  {/* Passengers & Seats Summary */}
                   <div className="review-section">
-                    <h3>Passengers ({passengers.length})</h3>
+                    <h3>Passengers & Seats ({passengers.length})</h3>
                     <div className="passengers-list">
                       {passengers.map((p, index) => (
                         <div key={index} className="passenger-summary">
@@ -520,8 +573,14 @@ const BookingPage = () => {
                             <span className="name">{p.passenger_name}</span>
                             <span className="details">
                               {p.age} yrs, {p.gender === 'M' ? 'Male' : p.gender === 'F' ? 'Female' : 'Other'}
+                              {selectedSeats[index] && (
+                                <> • Seat {selectedSeats[index].seat_number} ({selectedSeats[index].seat_position})</>
+                              )}
                             </span>
                           </div>
+                          {selectedSeats[index]?.surcharge > 0 && (
+                            <span className="seat-surcharge-badge">+₹{selectedSeats[index].surcharge.toFixed(0)}</span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -535,6 +594,12 @@ const BookingPage = () => {
                         <span>Base Fare ({seatTier.replace('_', ' ')}) × {passengers.length}</span>
                         <span>₹{tierPrice.toFixed(2)} × {passengers.length}</span>
                       </div>
+                      {seatSurcharge > 0 && (
+                        <div className="fare-row">
+                          <span>Seat Selection Surcharge</span>
+                          <span>+₹{seatSurcharge.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="fare-row">
                         <span>Taxes & Fees</span>
                         <span>Included</span>
@@ -548,8 +613,8 @@ const BookingPage = () => {
                 </div>
               )}
 
-              {/* Step 3: Payment */}
-              {currentStep === 3 && (
+              {/* Step 4: Payment */}
+              {currentStep === 4 && (
                 <div className="step-content">
                   <h2>Payment</h2>
                   <p className="step-description">Choose your preferred payment method</p>
@@ -718,7 +783,7 @@ const BookingPage = () => {
                   </button>
                 )}
 
-                {currentStep < 3 ? (
+                {currentStep < 4 ? (
                   <button 
                     type="button" 
                     className="btn btn-primary"
@@ -799,13 +864,25 @@ const BookingPage = () => {
                         <span>Passengers</span>
                         <span>{passengers.length} Adult(s)</span>
                       </div>
+                      {selectedSeats.length > 0 && (
+                        <div className="detail-row">
+                          <span>Seats</span>
+                          <span>{selectedSeats.map(s => s.seat_number).join(', ')}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="summary-price">
                       <div className="price-row">
-                        <span>Per Person</span>
-                        <span>₹{tierPrice.toFixed(2)}</span>
+                        <span>Base Fare × {passengers.length}</span>
+                        <span>₹{baseTotalPrice.toFixed(2)}</span>
                       </div>
+                      {seatSurcharge > 0 && (
+                        <div className="price-row surcharge">
+                          <span>Seat Surcharge</span>
+                          <span>+₹{seatSurcharge.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="price-row total">
                         <span>Total</span>
                         <span>₹{totalPrice.toFixed(2)}</span>

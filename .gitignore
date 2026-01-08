@@ -3,3 +3,6 @@ backend\database.db
 mail_credentials.txt
 backend/database.db
 temp.py
+test-otp.py
+test-otp.sh
+FlightBooker_Ticket_C23134.pdf
