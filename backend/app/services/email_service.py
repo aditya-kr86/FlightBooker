@@ -16,10 +16,10 @@ _otp_store: dict[str, dict] = {}
 
 # Configuration - Set these in environment variables
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.mailer91.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))  # Use 465 for SSL, 587 for STARTTLS
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "true").lower() == "true"  # Use SSL by default
+SMTP_USE_SSL = os.getenv("SMTP_USE_SSL", "false").strip().lower() == "true"
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 
 # Set default socket timeoutFailed to send email: (501, b'Bad HELO hostname syntax')
@@ -182,19 +182,17 @@ The FlightBooker Team
         msg.attach(MIMEText(html_content, "html"))
         
         print(f"[EMAIL] Connecting to SMTP server: {SMTP_HOST}:{SMTP_PORT} (SSL={SMTP_USE_SSL})")
-        
-        # Send email - use SSL or STARTTLS based on configuration
-        if SMTP_USE_SSL:
-            # Use SMTP_SSL for port 465 (implicit SSL/TLS)
+
+        # Use implicit SSL only for port 465; otherwise enforce STARTTLS (587)
+        if SMTP_PORT == 465:
             server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30)
-            server.ehlo("flightbooker.local")  # Use valid hostname for HELO
+            server.ehlo("localhost")
         else:
-            # Use SMTP with STARTTLS for port 587
             server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
-            server.ehlo("flightbooker.local")
+            server.ehlo("localhost")
             server.starttls()
-            server.ehlo("flightbooker.local")
-        
+            server.ehlo("localhost")
+
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.sendmail(SMTP_EMAIL, to_email, msg.as_string())
         server.quit()
@@ -362,14 +360,15 @@ def send_booking_confirmation_email(
         
         # Send email
         print(f"[EMAIL] Sending booking confirmation to {to_email} (SSL={SMTP_USE_SSL})")
-        if SMTP_USE_SSL:
+        # Use implicit SSL only for port 465; otherwise enforce STARTTLS (587)
+        if SMTP_PORT == 465:
             server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30)
-            server.ehlo("flightbooker.local")  # Use valid hostname for HELO
+            server.ehlo("localhost")
         else:
             server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
-            server.ehlo("flightbooker.local")
+            server.ehlo("localhost")
             server.starttls()
-            server.ehlo("flightbooker.local")
+            server.ehlo("localhost")
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.sendmail(SMTP_EMAIL, to_email, msg.as_string())
         server.quit()
@@ -511,14 +510,15 @@ For support, contact us at support@flightbooker.com
         
         # Send email
         print(f"[EMAIL] Sending cancellation email to {to_email} (SSL={SMTP_USE_SSL})")
-        if SMTP_USE_SSL:
+        # Use implicit SSL only for port 465; otherwise enforce STARTTLS (587)
+        if SMTP_PORT == 465:
             server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=30)
-            server.ehlo("flightbooker.local")  # Use valid hostname for HELO
+            server.ehlo("localhost")
         else:
             server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
-            server.ehlo("flightbooker.local")
+            server.ehlo("localhost")
             server.starttls()
-            server.ehlo("flightbooker.local")
+            server.ehlo("localhost")
         server.login(SMTP_EMAIL, SMTP_PASSWORD)
         server.sendmail(SMTP_EMAIL, to_email, msg.as_string())
         server.quit()

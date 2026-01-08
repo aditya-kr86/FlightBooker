@@ -349,15 +349,6 @@ const RegisterPage = () => {
             {/* Step 2: OTP Verification */}
             {step === STEPS.OTP && (
               <>
-                <button 
-                  type="button" 
-                  className="back-btn"
-                  onClick={() => setStep(STEPS.EMAIL)}
-                >
-                  <ArrowLeft size={18} />
-                  Back
-                </button>
-                
                 <h2>Verify Your Email</h2>
                 <p className="auth-subtitle">
                   We've sent a 6-digit code to<br />
@@ -433,15 +424,6 @@ const RegisterPage = () => {
             {/* Step 3: Complete Details */}
             {step === STEPS.DETAILS && (
               <>
-                <button 
-                  type="button" 
-                  className="back-btn"
-                  onClick={() => setStep(STEPS.OTP)}
-                >
-                  <ArrowLeft size={18} />
-                  Back
-                </button>
-
                 <h2>Complete Your Profile</h2>
                 <p className="auth-subtitle">Fill in your details to create your account</p>
 
@@ -457,7 +439,6 @@ const RegisterPage = () => {
                     <div className="form-group">
                       <label htmlFor="first_name">First Name</label>
                       <div className="input-wrapper">
-                        <User className="input-icon" size={18} />
                         <input
                           type="text"
                           id="first_name"
@@ -474,7 +455,6 @@ const RegisterPage = () => {
                     <div className="form-group">
                       <label htmlFor="last_name">Last Name</label>
                       <div className="input-wrapper">
-                        <User className="input-icon" size={18} />
                         <input
                           type="text"
                           id="last_name"
@@ -490,7 +470,6 @@ const RegisterPage = () => {
                   </div>
 
                   <div className="verified-email">
-                    <Mail size={16} />
                     <span>{formData.email}</span>
                     <CheckCircle size={16} className="verified-icon" />
                   </div>
@@ -499,7 +478,6 @@ const RegisterPage = () => {
                     <div className="form-group">
                       <label htmlFor="mobile">Mobile Number</label>
                       <div className="input-wrapper">
-                        <Phone className="input-icon" size={18} />
                         <input
                           type="tel"
                           id="mobile"
@@ -514,7 +492,6 @@ const RegisterPage = () => {
                     <div className="form-group">
                       <label htmlFor="country">Country</label>
                       <div className="input-wrapper">
-                        <Globe className="input-icon" size={18} />
                         <select
                           id="country"
                           name="country"
@@ -533,7 +510,6 @@ const RegisterPage = () => {
                   <div className="form-group">
                     <label htmlFor="password">Password</label>
                     <div className="input-wrapper">
-                      <Lock className="input-icon" size={18} />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         id="password"
@@ -560,7 +536,6 @@ const RegisterPage = () => {
                   <div className="form-group">
                     <label htmlFor="confirmPassword">Confirm Password</label>
                     <div className="input-wrapper">
-                      <Lock className="input-icon" size={18} />
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
                         id="confirmPassword"
