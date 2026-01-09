@@ -11,8 +11,8 @@ from typing import Optional
 _otp_store: dict[str, dict] = {}
 
 # Configuration - MSG91 settings
-MSG91_AUTHKEY = os.getenv("MSG91_AUTHKEY","449223ArYXhZugN6695ffbc6P1")
-SENDER_DOMAIN = os.getenv("SENDER_DOMAIN","mail.ankus.dev")
+MSG91_AUTHKEY = os.getenv("MSG91_AUTHKEY")
+SENDER_DOMAIN = os.getenv("SENDER_DOMAIN")
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 MSG91_API_URL = os.getenv("MSG91_API_URL", "https://control.msg91.com/api/v5/email/send")
 
